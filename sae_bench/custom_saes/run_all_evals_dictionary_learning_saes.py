@@ -19,26 +19,33 @@ import sae_bench.evals.scr_and_tpp.main as scr_and_tpp
 import sae_bench.evals.sparse_probing.main as sparse_probing
 import sae_bench.evals.unlearning.main as unlearning
 import sae_bench.sae_bench_utils.general_utils as general_utils
+import sae_bench.custom_saes.wta_sae as wta_sae
 
 MODEL_CONFIGS = {
     "pythia-70m-deduped": {
         "batch_size": 512,
         "dtype": "float32",
-        "layers": [3, 4],
+        "layers": [3],
         "d_model": 512,
     },
-    "pythia-160m-deduped": {
-        "batch_size": 256,
+    "pythia-410m-deduped": {
+        "batch_size": 512,
         "dtype": "float32",
-        "layers": [8],
-        "d_model": 768,
+        "layers": [3],
+        "d_model": 1024,
     },
-    "gemma-2-2b": {
-        "batch_size": 32,
-        "dtype": "bfloat16",
-        "layers": [5, 12, 19],
-        "d_model": 2304,
-    },
+    # "pythia-160m-deduped": {
+    #     "batch_size": 256,
+    #     "dtype": "float32",
+    #     "layers": [8],
+    #     "d_model": 768,
+    # },
+    # "gemma-2-2b": {
+    #     "batch_size": 32,
+    #     "dtype": "bfloat16",
+    #     "layers": [5, 12, 19],
+    #     "d_model": 2304,
+    # },
 }
 
 output_folders = {
@@ -54,14 +61,15 @@ output_folders = {
 
 
 TRAINER_LOADERS = {
-    "MatryoshkaBatchTopKTrainer": batch_topk_sae.load_dictionary_learning_matryoshka_batch_topk_sae,
+    # "MatryoshkaBatchTopKTrainer": batch_topk_sae.load_dictionary_learning_matryoshka_batch_topk_sae,
     "BatchTopKTrainer": batch_topk_sae.load_dictionary_learning_batch_topk_sae,
-    "TopKTrainer": topk_sae.load_dictionary_learning_topk_sae,
-    "StandardTrainerAprilUpdate": relu_sae.load_dictionary_learning_relu_sae,
-    "StandardTrainer": relu_sae.load_dictionary_learning_relu_sae,
-    "PAnnealTrainer": relu_sae.load_dictionary_learning_relu_sae,
-    "JumpReluTrainer": jumprelu_sae.load_dictionary_learning_jump_relu_sae,
-    "GatedSAETrainer": gated_sae.load_dictionary_learning_gated_sae,
+    # "TopKTrainer": topk_sae.load_dictionary_learning_topk_sae,
+    # "StandardTrainerAprilUpdate": relu_sae.load_dictionary_learning_relu_sae,
+    # "StandardTrainer": relu_sae.load_dictionary_learning_relu_sae,
+    # "PAnnealTrainer": relu_sae.load_dictionary_learning_relu_sae,
+    # "JumpReluTrainer": jumprelu_sae.load_dictionary_learning_jump_relu_sae,
+    # "GatedSAETrainer": gated_sae.load_dictionary_learning_gated_sae,
+    "WTATrainer": wta_sae.load_dictionary_learning_wta_sae,
 }
 
 
@@ -83,14 +91,24 @@ def get_all_hf_repo_autoencoders(
             if file == "config.json":
                 config_locations.append(os.path.join(root, file))
 
+    # Print for debugging
+    print(f"Found config locations: {config_locations}")
+    
     repo_locations = []
 
     for config in config_locations:
-        repo_location = config.split(f"{download_location}/")[1].split("/config.json")[
-            0
-        ]
-        repo_locations.append(repo_location)
-
+        # Extract the relative path from the download location
+        rel_path = os.path.relpath(os.path.dirname(config), download_location)
+        
+        # If the config is in the root directory, use empty string
+        if rel_path == ".":
+            repo_locations.append("")
+        else:
+            repo_locations.append(rel_path)
+    
+    # Print for debugging
+    print(f"Extracted repo locations: {repo_locations}")
+    
     return repo_locations
 
 
@@ -104,19 +122,30 @@ def load_dictionary_learning_sae(
     download_location: str = "downloaded_saes",
 ) -> base_sae.BaseSAE:
     download_location = os.path.join(download_location, repo_id.replace("/", "_"))
-
-    config_file = f"{download_location}/{location}/config.json"
-
+    
+    # Fix: Handle the case where location is empty (root directory)
+    if location == "":
+        config_file = os.path.join(download_location, "config.json")
+        ae_path = "ae.pt"
+    else:
+        config_file = os.path.join(download_location, location, "config.json")
+        ae_path = os.path.join(location, "ae.pt")
+    
+    # Print for debugging
+    print(f"Looking for config at: {config_file}")
+    
     with open(config_file) as f:
         config = json.load(f)
 
     trainer_class = config["trainer"]["trainer_class"]
-
-    location = f"{location}/ae.pt"
+    
+    # Print for debugging
+    print(f"Using trainer class: {trainer_class}")
+    print(f"Loading ae.pt from: {ae_path}")
 
     sae = TRAINER_LOADERS[trainer_class](
         repo_id=repo_id,
-        filename=location,
+        filename=ae_path,
         layer=layer,
         model_name=model_name,
         device=device,
@@ -155,7 +184,8 @@ def run_evals(
     eval_types: list[str],
     random_seed: int,
     api_key: str | None = None,
-    force_rerun: bool = False,
+    force_rerun: bool = True,
+    cache_dir: str | None = None,
 ):
     """Run selected evaluations for the given model and SAEs."""
 
@@ -171,6 +201,7 @@ def run_evals(
                     random_seed=random_seed,
                     llm_batch_size=llm_batch_size,
                     llm_dtype=llm_dtype,
+                    cache_dir=cache_dir,
                 ),
                 selected_saes,
                 device,
@@ -236,6 +267,7 @@ def run_evals(
                     perform_scr=True,
                     llm_batch_size=llm_batch_size,
                     llm_dtype=llm_dtype,
+                    cache_dir=cache_dir,
                 ),
                 selected_saes,
                 device,
@@ -253,6 +285,7 @@ def run_evals(
                     perform_scr=False,
                     llm_batch_size=llm_batch_size,
                     llm_dtype=llm_dtype,
+                    cache_dir=cache_dir,
                 ),
                 selected_saes,
                 device,
@@ -362,6 +395,24 @@ if __name__ == "__main__":
     Running this script as is should run SAE Bench Pythia and Gemma SAEs.
     """
     RANDOM_SEED = 42
+    
+    scratch_dir = "/storage/home/hcoda1/0/sgovil9/scratch"
+    os.makedirs(scratch_dir, exist_ok=True)
+    
+    hf_cache_dir = os.path.join(scratch_dir, "hf_cache")
+    os.makedirs(hf_cache_dir, exist_ok=True)
+    os.environ["HF_HOME"] = hf_cache_dir
+    os.environ["TRANSFORMERS_CACHE"] = os.path.join(hf_cache_dir, "transformers")
+    os.environ["HF_DATASETS_CACHE"] = os.path.join(hf_cache_dir, "datasets")
+    
+    # Set Weights & Biases cache directory
+    wandb_cache_dir = os.path.join(scratch_dir, "wandb")
+    os.makedirs(wandb_cache_dir, exist_ok=True)
+    os.environ["WANDB_CACHE_DIR"] = wandb_cache_dir
+    
+    # Set download location for SAEs
+    download_location = os.path.join(scratch_dir, "downloaded_saes")
+    os.makedirs(download_location, exist_ok=True)
 
     device = general_utils.setup_environment()
 
@@ -370,12 +421,12 @@ if __name__ == "__main__":
     # Unlearning will also require requesting permission for the WMDP dataset (see unlearning/README.md)
     # Absorption not recommended for models < 2B parameters
     eval_types = [
-        "absorption",
+        # "absorption",
         "core",
         "scr",
         "tpp",
         "sparse_probing",
-        "autointerp",
+        # "autointerp",
         # "unlearning",
         "ravel",
     ]
@@ -399,10 +450,13 @@ if __name__ == "__main__":
 
     repos = [
         (
-            "adamkarvonen/saebench_pythia-160m-deduped_width-2pow14_date-0108",
-            "pythia-160m-deduped",
+            "sgovil5/wtasae",
+            "pythia-410m-deduped",
         ),
-        ("canrager/saebench_gemma-2-2b_width-2pow14_date-0107", "gemma-2-2b"),
+        (
+            "sgovil5/batchtopksae",
+            "pythia-410m-deduped",
+        )
     ]
     exclude_keywords = ["checkpoints"]
     include_keywords = []
@@ -432,4 +486,5 @@ if __name__ == "__main__":
             eval_types=eval_types,
             api_key=api_key,
             random_seed=RANDOM_SEED,
+            force_rerun=True
         )

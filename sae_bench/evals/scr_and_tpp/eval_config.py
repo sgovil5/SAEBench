@@ -130,3 +130,5 @@ class ScrAndTppEvalConfig(BaseEvalConfig):
         title="Column 1 Values Lookup",
         description="Column1 Values apply only to the SCR metric. Column1 values represents the class pairs we train the linear probes on. In each case, we will create a perfectly biased dataset, such as all professors are males and all nurses are females.",
     )
+    
+    cache_dir: str | None = None

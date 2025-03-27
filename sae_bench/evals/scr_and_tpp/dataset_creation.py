@@ -113,12 +113,13 @@ def get_train_test_data(
     random_seed: int,
     column1_vals: tuple[str, str] | None = None,
     column2_vals: tuple[str, str] | None = None,
+    cache_dir: str | None = None,
 ) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     if spurious_corr:
         assert "bias_in_bios" in dataset_name or "amazon_reviews" in dataset_name
 
         dataset_name = dataset_name.split("_class_set")[0]
-        dataset = load_dataset(dataset_name)
+        dataset = load_dataset(dataset_name, cache_dir=cache_dir)
         train_df = pd.DataFrame(dataset["train"])  # type: ignore
         test_df = pd.DataFrame(dataset["test"])  # type: ignore
 

@@ -492,6 +492,7 @@ def get_dataset_activations(
         config.random_seed,
         column1_vals,
         column2_vals,
+        cache_dir=config.cache_dir,
     )
 
     if not config.perform_scr:
